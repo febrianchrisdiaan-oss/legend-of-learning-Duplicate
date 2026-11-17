@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html class="dark" lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- Preload aset utama -->
+  <link rel="preload" href="/fonts/RetroGaming.ttf" as="font" type="font/truetype" crossorigin />
+  <link rel="preload" href="/logo/Zigma-logo-fix.webp" as="image" />
+  <link rel="preload" href="/assets/cursor_03.png" as="image" />
+
+  <link rel="icon" type="image/webp" href="/logo/SkeletonV1.webp" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#72BF78" />
+
+  <title>Zigma - Multiplayer RPG Quiz</title>
+  <meta name="title" content="Zigma - Multiplayer RPG Quiz" />
+  <meta name="description" content="Game kuis RPG multiplayer: jelajahi peta, kalahkan musuh dengan menjawab soal, dan bersaing bersama teman sekelas." />
+  <meta name="keywords" content="game edukasi, kuis multiplayer, RPG, Phaser, Colyseus, belajar sambil bermain" />
+  <meta name="author" content="Tim Zigma" />
+  <meta name="robots" content="index, follow" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="Zigma - Multiplayer RPG Quiz" />
+  <meta property="og:description" content="Game kuis RPG multiplayer untuk kelas. Pengetahuan adalah kekuatan!" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <style>
+    @font-face { font-family: 'Retro Gaming'; src: url('/fonts/RetroGaming.ttf') format('truetype'); font-weight: normal; font-style: normal; }
+    @font-face { font-family: 'VT323'; src: url('/fonts/VT323-Regular.ttf') format('truetype'); font-weight: normal; font-style: normal; }
+  </style>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#72BF78", "secondary": "#A0D683", "accent": "#FEFF9F",
+            "background-light": "#D3EE98", "background-dark": "#121216", "surface-dark": "#1a1a20",
+          },
+          fontFamily: { "display": ["'Retro Gaming'", "monospace"], "sans": ["'Retro Gaming'", "monospace"] },
+        },
+      },
+    }
+  </script>
+
+  <!-- PWA: Tangkap prompt install + update Service Worker -->
+  <script>
+    window.zigmaDeferredPrompt = window.zigmaDeferredPrompt || null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.zigmaDeferredPrompt = e;
+      window.dispatchEvent(new CustomEvent('zigmaPromptReady', { detail: e }));
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').then((reg) => {
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) nw.postMessage({ type: 'SKIP_WAITING' });
+          });
+        });
+      }).catch((err) => console.error('[PWA] ServiceWorker gagal:', err));
+
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return;
+        const gc = document.getElementById('game-container');
+        if (gc && getComputedStyle(gc).display !== 'none') return;
+        refreshing = true;
+        window.location.reload();
+      });
+    }
+  </script>
+
+  <style>
+    /* ===== Dasar ===== */
+    body, * { cursor: url('/assets/cursor_03.png') 0 0, auto !important; }
+    body, p, h1, h2, h3, h4, h5, h6, span, button, input, select, textarea { font-family: 'Retro Gaming', monospace !important; }
+    .material-symbols-outlined { font-family: 'Material Symbols Outlined' !important; }
+    html, body { margin: 0; padding: 0; overflow: hidden; background-color: #121216; width: 100vw; height: 100vh; position: fixed; touch-action: none; user-select: none; }
+    
+    /* ===== FIX PERBAIKAN CANVAS PHASER FULLSCREEN (Mencegah Layar Terbelah/Hitam) ===== */
+    #game-container { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow: hidden; z-index: 1; }
+    #game-container canvas { width: 100% !important; height: 100% !important; display: block; object-fit: cover; cursor: url('/assets/cursor_03.png') 0 0, auto !important; image-rendering: pixelated; }
+
+    /* ===== Komponen UI Premium ===== */
+    .glass-panel { background: rgba(26, 26, 32, 0.85); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    .pixel-border { box-shadow: 0 -3px 0 0 #000, 0 3px 0 0 #000, -3px 0 0 0 #000, 3px 0 0 0 #000; }
+    .pixel-text-outline { text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000; }
+    .pixel-btn-green { box-shadow: inset -4px -4px 0px 0px rgba(0, 163, 54, 0.7); border: 2px solid #000; transition: transform 0.1s, filter 0.2s; }
+    .pixel-btn-blue { box-shadow: inset -4px -4px 0px 0px rgba(0, 130, 153, 0.7); border: 2px solid #000; transition: transform 0.1s; }
+    .pixel-btn-yellow { box-shadow: inset -4px -4px 0px 0px rgba(184, 184, 74, 0.7); border: 2px solid #000; transition: transform 0.1s; }
+    
+    .pixel-btn-green:active, .pixel-btn-blue:active, .pixel-btn-yellow:active { transform: translateY(2px) scale(0.98); box-shadow: inset -2px -2px 0px 0px rgba(0,0,0,0.5); }
+    .pixel-btn-green:hover { filter: brightness(1.1); }
+
+    .card-hover { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.2s; }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 16px 30px -10px rgba(0,0,0,0.6); }
+
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #1a1a20; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #72BF78; }
+
+    /* ===== SEMUA ANIMASI VISUAL LENGKAP & UTUH ===== */
+    .animate-float { animation: float 3s ease-in-out infinite; }
+    @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+    @keyframes glow-pulse { 0%, 100% { box-shadow: 0 0 5px rgba(114,191,120,0.3); } 50% { box-shadow: 0 0 20px rgba(160,214,131,0.6); } }
+    .glow-pulse { animation: glow-pulse 3s ease-in-out infinite; }
+
+    .fantasy-bg { background: radial-gradient(ellipse at center, rgba(114,191,120,0.12) 0%, transparent 60%), radial-gradient(circle at top right, rgba(160,214,131,0.08) 0%, transparent 40%), radial-gradient(circle at bottom left, rgba(211,238,152,0.06) 0%, transparent 50%), linear-gradient(180deg, rgba(114,191,120,0.05) 0%, rgba(10,20,12,0.98) 40%, #000000 100%); }
+    .forest-silhouette { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%23080812' d='M0,192L48,176C96,160,192,128,288,138.7C384,149,480,203,576,224C672,245,768,235,864,213.3C960,192,1056,160,1152,149.3C1248,139,1344,149,1392,154.7L1440,160L1440,320L0,320Z'%3E%3C/path%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320'%3E%3Cpath fill='%2305050f' d='M0,288L48,272C96,256,192,224,288,218.7C384,213,480,235,576,245.3C672,256,768,256,864,240C960,224,1056,192,1152,186.7C1248,181,1344,203,1392,213.3L1440,224L1440,320L0,320Z'%3E%3C/path%3E%3C/svg%3E"); background-size: cover; background-position: bottom; background-repeat: no-repeat; }
+    
+    @keyframes fog-drift { 0% { transform: translateX(-5%); opacity: 0.2; } 50% { opacity: 0.5; } 100% { transform: translateX(5%); opacity: 0.2; } }
+    .mystical-fog { background: linear-gradient(90deg, transparent 0%, rgba(160,214,131,0.03) 20%, rgba(211,238,152,0.04) 50%, rgba(114,191,120,0.03) 80%, transparent 100%); animation: fog-drift 22s ease-in-out infinite alternate; }
+    
+    @keyframes scroll-diagonal { 0% { background-position: 0 0; } 100% { background-position: -80px 80px; } }
+    .pixel-bg-pattern { background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M20 20.5V18h2.5v2.5H20zm0-5V13h2.5v2.5H20zM5 20.5V18h2.5v2.5H5zm0-5V13h2.5v2.5H5zm30 0V13h2.5v2.5H35zm0 5V18h2.5v2.5H35zM20 35.5V33h2.5v2.5H20zm0-5V28h2.5v2.5H20zM5 35.5V33h2.5v2.5H5zm0-5V28h2.5v2.5H5zm30 0V28h2.5v2.5H35zm0 5V33h2.5v2.5H35z' fill='%23ffffff' fill-opacity='0.03' fill-rule='evenodd'/%3E%3C/svg%3E"); animation: scroll-diagonal 10s linear infinite; }
+
+    @keyframes firefly { 0%, 100% { opacity: 0; transform: translateY(0) scale(0.5); } 10% { opacity: 1; } 50% { opacity: 0.8; transform: translateY(-80px) translateX(20px) scale(1); } 90% { opacity: 1; } }
+    .firefly { position: absolute; width: 5px; height: 5px; background: radial-gradient(circle, #D3EE98 0%, transparent 70%); border-radius: 50%; animation: firefly 6s ease-in-out infinite; pointer-events: none; }
+    
+    @keyframes float-particle { 0%, 100% { transform: translateY(0) translateX(0); opacity: 0.2; } 50% { transform: translateY(-30px) translateX(-10px); opacity: 0.6; } }
+    .magic-particle { position: absolute; width: 3px; height: 3px; background: #A0D683; border-radius: 50%; box-shadow: 0 0 8px #A0D683; animation: float-particle 8s ease-in-out infinite; pointer-events: none; }
+
+    /* ===== ANIMASI KARAKTER BERJALAN DI BACKGROUND ===== */
+    @keyframes walk-across-right { from { transform: translateX(-240px); } to { transform: translateX(100vw); } }
+    @keyframes base-walk-cycle { from { background-position-x: 0; } to { background-position-x: -800%; } }
+    .walking-char-container { position: absolute; bottom: 4px; left: 0; width: 192px; height: 128px; z-index: 5; pointer-events: none; will-change: transform; }
+    .walking-char-sprite { width: 100%; height: 100%; background-size: 800% 100%; background-repeat: no-repeat; image-rendering: pixelated; animation: base-walk-cycle 0.8s steps(8) infinite; }
+    .walker-human { animation: walk-across-right 24s linear infinite backwards; }
+    .walker-skeleton { animation: walk-across-right 24s linear 3s infinite backwards; }
+
+    /* ===== SPINNER LOADING AUTH ANIMASI ===== */
+    .auth-loading-spinner { position: relative; width: 100px; height: 100px; display: flex; align-items: center; justify-content: center; }
+    .spinner-ring { position: absolute; width: 100%; height: 100%; border-radius: 50%; border: 3px solid transparent; border-top-color: rgba(255,255,255,0.8); animation: spin 1s linear infinite; }
+    .spinner-ring-2 { width: 80%; height: 80%; border-top-color: transparent; border-right-color: #FEFF9F; animation: spin-reverse 1.2s linear infinite; }
+    .spinner-ring-3 { width: 60%; height: 60%; border-top-color: transparent; border-bottom-color: #72BF78; animation: spin 1.5s linear infinite; }
+    .spinner-icon { font-size: 28px !important; color: white; animation: pulse-glow 2s ease-in-out infinite; z-index: 1; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes spin-reverse { to { transform: rotate(-360deg); } }
+    @keyframes pulse-glow { 0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 5px rgba(255,255,255,0.3)); } 50% { opacity: 1; filter: drop-shadow(0 0 15px rgba(255,255,255,0.8)); } }
+
+    /* ===== PERBAIKAN VIRTUAL JOYSTICK (Mencegah Sembunyi di HP Landscape) ===== */
+    #touch-joystick-wrapper { touch-action: none; user-select: none; z-index: 80; position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; }
+    #joystick-base { width: 100%; height: 100%; background: rgba(0, 0, 0, 0.35); border: 2px solid rgba(254, 255, 159, 0.7); border-radius: 50%; position: relative; backdrop-filter: blur(3px); }
+    #joystick-thumb { width: 48px; height: 48px; background: rgba(114, 191, 120, 0.85); border: 2px solid #FEFF9F; border-radius: 50%; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 12px rgba(114, 191, 120, 0.6); }
+
+    /* Sembunyikan joystick HANYA pada Laptop/Desktop yang menggunakan Mouse murni */
+    @media (hover: hover) and (pointer: fine) {
+      #touch-joystick-wrapper { display: none !important; }
+    }
+
+    /* ===== Radar Grid Guru ===== */
+    .radar-grid { background-color: #11151a; background-image: linear-gradient(rgba(114,191,120,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(114,191,120,0.1) 1px, transparent 1px); background-size: 20px 20px; }
+
+    /* ===== Tombol Kuis ===== */
+    .quiz-btn { position: relative; overflow: hidden; transition: all 0.2s; background: #2a2a3e; border: 1px solid #444; }
+    .quiz-btn:active { transform: scale(0.97); border-color: #72BF78; background: #3a3a5e; }
+  </style>
+</head>
+
+<body class="bg-background-dark text-white overflow-hidden">
+
+  <!-- ============================================== -->
+  <!-- FITUR AUDIO UI BARU: BGM & SFX UNTUK TOMBOL    -->
+  <!-- ============================================== -->
+  <audio id="sfx-click" src="/assets/audio/themes/fantasy-rpg/click.mp3" preload="auto"></audio>
+  <audio id="bgm-lobby" src="/assets/audio/themes/fantasy-rpg/lobby.mp3" preload="auto" loop></audio>
+  
+  <script>
+    // Fungsi untuk memutar suara klik
+    function playClickSound() {
+      const clickSfx = document.getElementById("sfx-click");
+      if (clickSfx) {
+        const savedSfxVol = parseFloat(localStorage.getItem("zigma_sfx_vol") ?? "0.5");
+        clickSfx.currentTime = 0; 
+        clickSfx.volume = savedSfxVol;
+        clickSfx.play().catch(e => console.log("Gagal memutar SFX", e));
+      }
+    }
+
+    // Jalankan BGM begitu pengguna berinteraksi pertama kali (kebijakan browser)
+    document.addEventListener("click", () => {
+      const lobbyBgm = document.getElementById("bgm-lobby");
+      if (lobbyBgm && lobbyBgm.paused) {
+        const savedBgmVol = parseFloat(localStorage.getItem("zigma_bgm_vol") ?? "0.3");
+        lobbyBgm.volume = savedBgmVol; 
+        lobbyBgm.play().catch(e => console.log("BGM belum bisa diputar", e));
+      }
+    }, { once: true });
+
+    // Menambahkan efek klik ke SEMUA elemen berkelas tombol/interaktif
+    document.addEventListener("DOMContentLoaded", () => {
+      const buttons = document.querySelectorAll("button, .pixel-btn-green, .pixel-btn-blue, .pixel-btn-yellow");
+      buttons.forEach(btn => {
+        btn.addEventListener("click", playClickSound);
+      });
+    });
+  </script>
+
+  <!-- 📱 PERINGATAN WAJIB LANDSCAPE UNTUK MOBILE -->
+  <div id="landscape-warning" class="hidden fixed inset-0 z-[99999] bg-[#0a0a0f] flex-col items-center justify-center p-6 text-center">
+    <div class="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mb-4 animate-bounce border border-accent/50">
+      <span class="material-symbols-outlined text-4xl text-accent">screen_rotation</span>
+    </div>
+    <h2 class="text-xl sm:text-2xl text-primary font-bold mb-2 pixel-text-outline">MIRINGKAN HP KAMU!</h2>
+    <p class="text-xs text-gray-400 max-w-xs leading-relaxed">Game Zigma dirancang eksklusif dalam mode Lanskap (Horizontal) agar tampilan peta dan kuis terlihat proporsional.</p>
+  </div>
+
+  <!-- LATAR FANTASI & ANIMASI AMBIENT -->
+  <div id="fantasy-bg-layer" class="fixed inset-0 z-[5] pointer-events-none fantasy-bg overflow-hidden">
+    <div class="absolute inset-0 forest-silhouette"></div>
+    <div class="absolute inset-0 pixel-bg-pattern"></div>
+    <div class="mystical-fog absolute inset-0 w-[120%] h-full"></div>
+
+    <div class="firefly" style="left:8%; bottom:30%; animation-delay:0s;"></div>
+    <div class="firefly" style="left:22%; bottom:18%; animation-delay:1.4s; animation-duration:7s;"></div>
+    <div class="firefly" style="left:55%; bottom:22%; animation-delay:0.7s; animation-duration:8s;"></div>
+    <div class="firefly" style="left:81%; bottom:16%; animation-delay:2.1s; animation-duration:7s;"></div>
+    <div class="magic-particle" style="left:14%; bottom:45%; animation-delay:0.5s;"></div>
+    <div class="magic-particle" style="left:73%; bottom:48%; animation-delay:4.5s;"></div>
+
+    <!-- Karakter Berjalan di Background -->
+    <div class="walking-char-container walker-human">
+      <div class="walking-char-sprite" style="background-image: url('/assets/characters/base_walk_strip8.png');"></div>
+    </div>
+    <div class="walking-char-container walker-skeleton">
+      <div class="walking-char-sprite" style="background-image: url('/assets/characters/Skeleton/PNG/skeleton_walk_strip8.png');"></div>
+    </div>
+  </div>
+
+  <!-- CONTAINER PHASER (FULLSCREEN UNTUK KANVAS GAME) -->
+  <div id="game-container" class="hidden"></div>
+
+  <!-- 1. LAYAR LOADING AUTH -->
+  <div id="login-ui" class="fixed inset-0 z-[100] flex flex-col items-center justify-center p-4 bg-background-dark/90">
+    <div class="auth-loading-spinner mb-5">
+      <div class="spinner-ring"></div>
+      <div class="spinner-ring spinner-ring-2"></div>
+      <div class="spinner-ring spinner-ring-3"></div>
+      <span class="material-symbols-outlined spinner-icon">shield</span>
+    </div>
+    <h1 class="text-4xl text-primary mb-2 pixel-text-outline">ZIGMA</h1>
+    <p class="text-[10px] sm:text-xs text-secondary">Memeriksa kredensial...</p>
+  </div>
+
+  <!-- 2. LOBBY -->
+  <div id="lobby-ui" class="hidden fixed inset-0 z-[90] flex flex-col items-center justify-center p-4 overflow-y-auto">
+    <img src="/logo/Zigma-logo-fix.webp" alt="Zigma" class="h-16 sm:h-20 mb-4 z-10 animate-float drop-shadow-[0_0_15px_rgba(114,191,120,0.5)]" onerror="this.style.display='none'" />
+    <h2 class="text-lg sm:text-2xl mb-6 z-10 pixel-text-outline text-center">Selamat Datang, <span id="lobby-player-name" class="text-accent">Kadet</span>!</h2>
+    <div class="flex flex-col sm:flex-row gap-5 justify-center items-stretch z-10 w-full max-w-xl">
+
+      <!-- Mode Siswa -->
+      <div class="glass-panel pixel-border card-hover p-5 w-full max-w-[280px] text-center rounded-xl flex flex-col justify-between">
+        <div>
+          <span class="material-symbols-outlined text-4xl text-primary animate-float mb-2">swords</span>
+          <h3 class="text-base text-primary mb-1">Mode Siswa</h3>
+          <p class="text-[10px] text-gray-400 mb-4">Masukkan kode kelas dari guru.</p>
+          <input type="text" id="join-room-code" class="w-full bg-[#0a0a0f] text-white p-2.5 rounded mb-4 text-center text-lg tracking-[0.2em] uppercase border border-[#333] focus:border-primary focus:outline-none" placeholder="KODE">
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-scan-qr" class="pixel-btn-blue bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded flex items-center justify-center" title="Scan QR Code">
+            <span class="material-symbols-outlined text-sm">qr_code_scanner</span>
+          </button>
+          <button id="btn-join-room" class="pixel-btn-green flex-1 bg-primary text-[#121216] font-bold p-2.5 rounded text-xs">Bergabung</button>
+        </div>
+      </div>
+
+      <!-- Mode Guru -->
+      <div class="glass-panel pixel-border card-hover p-5 w-full max-w-[280px] text-center rounded-xl flex flex-col justify-between">
+        <div>
+          <span class="material-symbols-outlined text-4xl text-accent animate-float mb-2">school</span>
+          <h3 class="text-base text-accent mb-1">Mode Guru (Host)</h3>
+          <p class="text-[10px] text-gray-400 mb-4">Buat sesi permainan dan awasi radar murid.</p>
+        </div>
+        <button id="btn-goto-host" class="pixel-btn-yellow w-full bg-accent text-[#121216] font-bold p-3 rounded text-xs mt-2">Buat Kelas Baru</button>
+      </div>
+    </div>
+  </div>
+  <!-- client/index.html (Tambahkan di bagian UI) -->
+
+<!-- WIDGET CHAT EMOJI (Hanya Muncul di Lobby) -->
+
+  <!-- 3. DASHBOARD GURU -->
+  <div id="host-dashboard-ui" class="hidden fixed inset-0 z-[90] flex flex-col items-center justify-center p-4 overflow-y-auto">
+    <div class="glass-panel pixel-border p-5 w-[90%] max-w-[380px] rounded-xl shadow-2xl z-10 my-auto">
+      <h2 class="text-center text-base text-primary mb-3">Pengaturan Sesi Guru</h2>
+
+      <label class="text-[10px] text-secondary">Pilih Map</label>
+      <select id="host-difficulty" class="w-full bg-[#0a0a0f] text-white p-2.5 rounded mb-3 mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+        <option value="easy">Mudah - Desa dan Danau</option>
+        <option value="medium">Sedang - Taman Kota</option>
+        <option value="hard">Sangat Sulit - Pusat Kota</option>
+      </select>
+
+      <label class="text-[10px] text-secondary">Mode Permainan</label>
+      <select id="host-mode" class="w-full bg-[#0a0a0f] text-white p-2.5 rounded mb-3 mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+        <option value="default">Template Default (Matematika Acak)</option>
+        <option value="custom">Custom (Soal Buatan Sendiri)</option>
+      </select>
+
+      <!-- Panel Custom (Muncul saat Mode Custom dipilih) -->
+      <div id="host-custom-panel" class="hidden bg-[#121218] p-3 rounded mb-3 border border-[#444]">
+        
+        <!-- [FITUR BARU] UI BANK SOAL -->
+        <div class="mb-3 p-2 bg-[#1a1a20] rounded border border-[#333]">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-[9px] text-secondary block font-bold">Bank Soal Tersimpan</label>
+            <button id="btn-save-bank" class="text-[8px] bg-primary text-black px-2 py-0.5 rounded hover:bg-white transition-colors cursor-pointer">+ Simpan Saat Ini</button>
+          </div>
+          <div class="flex gap-2">
+            <select id="host-saved-banks" class="flex-1 bg-[#0a0a0f] text-white p-1.5 rounded border border-[#333] text-[9px] focus:border-primary focus:outline-none">
+              <option value="">-- Pilih Bank Soal --</option>
+            </select>
+            <button id="btn-load-bank" class="bg-blue-600 text-white px-2 py-1.5 rounded text-[9px] hover:bg-blue-500 transition-colors">Muat</button>
+            <button id="btn-delete-bank" class="bg-red-600 text-white px-2 py-1.5 rounded text-[9px] hover:bg-red-500 transition-colors">Hapus</button>
+          </div>
+        </div>
+
+        <div class="flex gap-2 mb-2">
+          <div class="flex-1">
+            <label class="text-[9px] text-secondary">Jml Musuh</label>
+            <input type="number" id="host-enemies" value="25" min="1" class="w-full bg-[#0a0a0f] text-white p-1.5 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+          </div>
+          <div class="flex-1">
+            <label class="text-[9px] text-secondary">HP Musuh</label>
+            <input type="number" id="host-hp" value="2" min="1" class="w-full bg-[#0a0a0f] text-white p-1.5 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+          </div>
+        </div>
+        
+        <div class="mb-2">
+          <label class="text-[9px] text-secondary block">Aturan Eliminasi</label>
+          <select id="host-player-death" class="w-full bg-[#0a0a0f] text-white p-1.5 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+            <option value="true">Aktif (Bisa Gugur)</option>
+            <option value="false">Nonaktif (Skor Saja)</option>
+          </select>
+        </div>
+
+        <label class="text-[9px] text-secondary">Isi Soal (Tanya | Benar | S1 | S2 | S3)</label>
+        <textarea id="host-questions" class="w-full bg-[#0a0a0f] text-white p-2 mt-1 h-20 text-[10px] resize-none border border-[#333] rounded custom-scrollbar focus:border-primary focus:outline-none" placeholder="1+1=? | 2 | 3 | 4 | 5&#10;Ibukota RI? | Jakarta | Bandung | Bali | Medan"></textarea>
+      </div>
+
+      <div class="flex gap-3 mt-4">
+        <button id="btn-host-cancel" class="pixel-btn-green flex-1 bg-red-500 text-white font-bold p-2.5 rounded text-xs">Batal</button>
+        <button id="btn-host-create" class="pixel-btn-green flex-1 bg-primary text-[#121216] font-bold p-2.5 rounded text-xs">Buat Sesi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. MONITOR RADAR GURU -->
+  <div id="host-monitor-ui" class="hidden fixed inset-0 z-[85] bg-background-dark p-3 sm:p-6 flex flex-col lg:flex-row gap-4 overflow-y-auto">
+    <div class="w-full lg:w-[280px] flex flex-col z-10 shrink-0">
+      <div class="glass-panel pixel-border p-4 text-center mb-2 rounded-xl">
+        <p class="text-[10px] text-secondary">KODE KELAS</p>
+        <p id="hm-room-code" class="text-2xl sm:text-3xl text-accent font-bold tracking-[0.2em] my-1 pixel-text-outline">...</p>
+        <div id="hm-qrcode" class="flex justify-center bg-white p-1.5 rounded-lg mx-auto w-fit hidden mb-3"></div>
+        <button id="hm-start-btn" class="pixel-btn-green w-full bg-primary text-[#121216] font-bold py-2.5 rounded-xl mb-2 text-xs">Mulai Permainan</button>
+        <button id="hm-end-btn" class="hidden pixel-btn-green w-full bg-red-600 text-white font-bold py-2.5 rounded-xl mb-2 text-xs">Akhiri Permainan</button>
+        <h3 class="border-b border-gray-700 pb-1 mb-2 text-secondary text-xs">Daftar Kadet</h3>
+        <ul id="hm-player-list" class="max-h-24 lg:max-h-48 overflow-y-auto space-y-1 custom-scrollbar"></ul>
+      </div>
+    </div>
+    <div class="flex-1 flex flex-col items-center justify-center glass-panel rounded-xl pixel-border relative overflow-hidden z-10 min-h-[220px] p-2">
+      <h3 class="absolute top-2 left-3 z-10 text-xs sm:text-sm text-primary pixel-text-outline">Live Radar Map</h3>
+      <div id="hm-live-map" class="radar-grid relative w-full max-w-[300px] h-[200px] sm:w-[380px] sm:h-[380px] rounded-lg border border-gray-700 mt-4 sm:mt-0 shadow-inner"></div>
+    </div>
+  </div>
+
+ <!-- 5. RUANG TUNGGU SISWA -->
+  <div id="waiting-room-ui" class="hidden fixed inset-0 z-[80] bg-background-dark/90 flex flex-col items-center justify-center p-4 overflow-hidden">
+    
+    <!-- Container untuk menampung efek emoji melayang (seperti IG Live) -->
+    <div id="floating-emoji-container" class="absolute inset-0 pointer-events-none z-0"></div>
+
+    <div class="auth-loading-spinner mb-5 z-10">
+      <div class="spinner-ring"></div>
+      <div class="spinner-ring spinner-ring-2"></div>
+      <div class="spinner-ring spinner-ring-3"></div>
+      <span class="material-symbols-outlined spinner-icon text-accent">hourglass_top</span>
+    </div>
+    
+    <h2 class="text-lg sm:text-xl text-primary pixel-text-outline text-center mb-1 z-10">Menunggu Guru...</h2>
+    <p class="text-xs text-gray-400 text-center mb-8 z-10">Permainan akan segera dimulai</p>
+
+    <!-- PANEL EMOJI LOBBY -->
+    <div class="glass-panel p-4 rounded-xl pixel-border flex flex-col items-center z-10 shadow-[0_0_20px_rgba(114,191,120,0.2)]">
+      <p class="text-[10px] text-secondary mb-3">Kirim Ekspresi ke Teman:</p>
+      <div class="flex gap-4">
+        <button class="emoji-btn hover:scale-125 transition-transform text-3xl" data-emoji="👋">👋</button>
+        <button class="emoji-btn hover:scale-125 transition-transform text-3xl" data-emoji="😂">😂</button>
+        <button class="emoji-btn hover:scale-125 transition-transform text-3xl" data-emoji="🔥">🔥</button>
+        <button class="emoji-btn hover:scale-125 transition-transform text-3xl" data-emoji="👍">👍</button>
+        <button class="emoji-btn hover:scale-125 transition-transform text-3xl" data-emoji="😎">😎</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. LAYER UI IN-GAME (HUD, Kuis, Joystick) -->
+  <div id="game-ui-layer" class="hidden fixed inset-0 z-[50] pointer-events-none p-2 sm:p-4">
+
+    <!-- HUD PENGHAPUSAN HP & STAMINA BERSIH -->
+    <div id="hud" class="absolute top-2 left-2 sm:top-4 sm:left-4 glass-panel p-2.5 rounded-xl pointer-events-auto pixel-border w-32 sm:w-40">
+      <div class="text-[10px] sm:text-xs mb-1">Skor: <span id="hud-score" class="text-accent font-bold">0</span></div>
+      <div class="text-[8px] sm:text-[9px] text-gray-300">Benar: <span id="hud-correct" class="text-primary">0</span> | Salah: <span id="hud-wrong" class="text-red-400">0</span></div>
+      
+      <div class="hidden">
+        <div id="hud-hp-bar"></div><span id="hud-hp-text"></span><div id="hud-stamina-bar"></div>
+      </div>
+    </div>
+
+    <!-- VIRTUAL JOYSTICK ANALOG -->
+    <div id="touch-joystick-wrapper" class="pointer-events-auto">
+      <div id="joystick-base">
+        <div id="joystick-thumb"></div>
+      </div>
+    </div>
+
+    <!-- TAMBAHAN WIDGET LIVE LEADERBOARD DI SUDUT KANAN ATAS HUD -->
+    <div id="live-leaderboard-hud" class="absolute top-4 right-4 bg-black/80 border border-[#444] rounded-lg p-2 text-white text-[11px] w-48 z-40 hidden pointer-events-none">
+      <div class="font-bold text-accent border-b border-[#444] pb-1 mb-1 text-center">Top Kadet Live</div>
+      <div id="hud-top-players" class="flex flex-col gap-1">
+        <!-- Diisi secara dinamis via GameScene -->
+      </div>
+      <div id="hud-my-rank" class="border-t border-[#444] pt-1 mt-1 text-primary font-bold text-center">
+        <!-- Peringkat diri sendiri di bawah -->
+      </div>
+    </div>
+
+    <!-- KUIS OVERLAY -->
+    <div id="quiz-overlay" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 sm:top-1/2 sm:right-6 sm:left-auto sm:translate-x-0 sm:-translate-y-1/2 w-[90%] max-w-[280px] sm:w-80 glass-panel p-4 sm:p-5 rounded-xl pixel-border pointer-events-auto z-[60] shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+      <div class="h-1.5 bg-[#0a0a0f] rounded-full mb-3 overflow-hidden border border-[#333]">
+        <div id="quiz-timer-bar" class="h-full bg-accent w-full transition-all duration-100"></div>
+      </div>
+      <p id="quiz-question" class="text-[11px] sm:text-xs mb-3 leading-relaxed text-white font-bold">Pertanyaan muncul di sini?</p>
+      <div id="quiz-options" class="flex flex-col gap-2"></div>
+      <p id="quiz-feedback" class="mt-2 text-center text-[10px] font-bold"></p>
+    </div>
+
+    <div id="npc-chat-overlay" class="hidden absolute bottom-4 left-1/2 -translate-x-1/2 glass-panel p-3 rounded-xl pixel-border text-center w-[90%] max-w-[340px] pointer-events-auto shadow-lg" style="transition: opacity 0.3s ease;">
+      <div class="text-[8px] text-accent mb-1 font-bold uppercase">Penduduk Desa</div>
+      <div id="npc-chat-text" class="text-[10px] leading-relaxed text-white"></div>
+    </div>
+  </div>
+
+  <!-- Overlay Menunggu Pemain Selesai & Kalah -->
+  <div id="waiting-overlay" class="fixed inset-0 z-[60] bg-black/80 flex-col items-center justify-center text-center p-4 hidden">
+    <span class="material-symbols-outlined text-4xl text-primary animate-float mb-2">hourglass_top</span>
+    <p class="text-sm text-white pixel-text-outline">Menunggu kadet lain menyelesaikan misi...</p>
+  </div>
+  <div id="defeat-overlay" class="fixed inset-0 z-[65] flex-col items-center justify-center text-center p-4 hidden" style="background:rgba(74,0,0,0.85);">
+    <h2 class="text-2xl text-white pixel-text-outline mb-2">💀 Terluka Parah</h2>
+    <p class="text-xs text-gray-200">Menunggu sesi permainan berakhir...</p>
+  </div>
+
+  <!-- 7. LEADERBOARD / HASIL AKHIR -->
+  <div id="leaderboard-overlay" class="hidden fixed inset-0 bg-black/90 flex flex-col items-center justify-center pointer-events-auto z-[70] p-4">
+    <div class="glass-panel p-5 w-[90%] max-w-[380px] rounded-xl pixel-border shadow-2xl glow-pulse">
+      <h2 class="text-center text-lg text-accent mb-4 pixel-text-outline">🏆 HASIL AKHIR 🏆</h2>
+      <div id="leaderboard-list" class="flex flex-col gap-2 max-h-[45vh] overflow-y-auto mb-4 custom-scrollbar pr-1"></div>
+      <button id="back-to-menu-btn" class="pixel-btn-green w-full bg-primary text-[#121216] font-bold py-3 rounded-lg text-xs hover:brightness-110">Kembali ke Menu</button>
+    </div>
+  </div>
+
+  <!-- Scanner QR -->
+  <div id="qr-scanner-overlay" class="hidden fixed inset-0 z-[200] bg-black/90 flex flex-col items-center justify-center p-4">
+    <div class="glass-panel pixel-border rounded-xl p-4 w-full max-w-[300px]">
+      <h3 class="text-center text-sm text-primary mb-3 pixel-text-outline">Scan QR Kelas</h3>
+      <div id="qr-reader" class="w-full aspect-square bg-black rounded-lg overflow-hidden border border-[#333]"></div>
+      <button id="btn-close-scanner" class="pixel-btn-green mt-3 w-full bg-red-500 text-white font-bold p-2.5 rounded text-xs">Tutup</button>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- FITUR MODAL & TOMBOL PENGATURAN AUDIO (DENGAN SHORTCUT ESC)    -->
+  <!-- ============================================================== -->
+  <button id="btn-open-settings" class="fixed bottom-3 right-14 z-[9999] w-9 h-9 bg-white/90 border-2 border-[#6CC452] rounded-full flex items-center justify-center shadow-lg pointer-events-auto transition-transform hover:scale-110 active:scale-95" title="Pengaturan Audio (ESC)">
+    <span class="material-symbols-outlined text-[#478D47] text-lg">volume_up</span>
+  </button>
+
+  <div id="settings-modal" class="hidden fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div class="glass-panel pixel-border p-5 w-full max-w-[280px] rounded-xl text-center shadow-2xl">
+      <h3 class="text-sm text-primary mb-4 pixel-text-outline">PENGATURAN AUDIO</h3>
+      
+      <!-- Pilihan Tema Audio -->
+      <div class="mb-4 text-left">
+        <label class="text-[10px] text-secondary block mb-1">Tema Audio</label>
+        <select id="select-audio-theme" class="w-full bg-[#0a0a0f] text-white p-2 rounded border border-[#333] text-xs focus:border-primary focus:outline-none cursor-pointer">
+          <option value="fantasy-rpg">Fantasy RPG - Adventure</option>
+          <option value="retro-8bit">Classic 8-Bit / Retro</option>
+          <option value="cyberpunk">Cyberpunk / Sci-Fi</option>
+          <option value="lofi-study">Lo-Fi Study / Relax</option>
+        </select>
+      </div>
+
+      <!-- Slider BGM -->
+      <div class="mb-4 text-left">
+        <div class="flex justify-between text-[10px] text-secondary mb-1">
+          <span>Musik (BGM)</span>
+          <span id="val-bgm">30%</span>
+        </div>
+        <input type="range" id="range-bgm" min="0" max="100" value="30" class="w-full accent-[#72BF78] cursor-pointer">
+      </div>
+
+      <!-- Slider SFX -->
+      <div class="mb-5 text-left">
+        <div class="flex justify-between text-[10px] text-secondary mb-1">
+          <span>Efek Suara (SFX)</span>
+          <span id="val-sfx">50%</span>
+        </div>
+        <input type="range" id="range-sfx" min="0" max="100" value="50" class="w-full accent-[#72BF78] cursor-pointer">
+      </div>
+
+      <button id="btn-close-settings" class="pixel-btn-green w-full bg-primary text-[#121216] font-bold py-2 rounded text-xs">Simpan & Tutup</button>
+    </div>
+  </div>
+
+  <!-- ============================================================== -->
+  <!-- FITUR MODAL & TOMBOL PROFIL & STATISTIK KADET                  -->
+  <!-- ============================================================== -->
+  <button id="btn-open-profile" class="fixed bottom-3 right-24 z-[9999] w-9 h-9 bg-white/90 border-2 border-[#6CC452] rounded-full flex items-center justify-center shadow-lg pointer-events-auto transition-transform hover:scale-110 active:scale-95" title="Profil & Statistik">
+    <span class="material-symbols-outlined text-[#478D47] text-lg">person</span>
+  </button>
+
+  <div id="profile-modal" class="hidden fixed inset-0 z-[10000] bg-black/80 flex items-center justify-center p-4">
+    <div class="glass-panel pixel-border p-5 w-full max-w-md rounded-xl shadow-2xl">
+      <h3 class="text-sm text-primary mb-4 text-center pixel-text-outline">PROFIL & STATISTIK KADET</h3>
+      
+      <!-- Bagian Statistik (Read-Only) -->
+      <div class="grid grid-cols-3 gap-2 mb-4 bg-[#121216] p-3 rounded border border-[#333] text-center">
+        <div>
+          <p class="text-[9px] text-secondary">Total Main</p>
+          <p id="stat-total-games" class="text-xs text-white font-bold">0</p>
+        </div>
+        <div>
+          <p class="text-[9px] text-secondary">Skor Tertinggi</p>
+          <p id="stat-highest-score" class="text-xs text-accent font-bold">0</p>
+        </div>
+        <div>
+          <p class="text-[9px] text-secondary">Akurasi</p>
+          <p id="stat-accuracy" class="text-xs text-primary font-bold">0%</p>
+        </div>
+      </div>
+
+      <!-- Form Edit Profil -->
+      <div class="space-y-3 text-left">
+        <div>
+          <label class="text-[10px] text-secondary">Nama Tampilan</label>
+          <input type="text" id="profile-username" class="w-full bg-[#0a0a0f] text-white p-2 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+        </div>
+        
+        <div class="flex gap-2">
+          <div class="flex-1">
+            <label class="text-[10px] text-secondary">Sekolah / Instansi</label>
+            <input type="text" id="profile-school" class="w-full bg-[#0a0a0f] text-white p-2 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none" placeholder="Nama Sekolah">
+          </div>
+          <div class="flex-1">
+            <label class="text-[10px] text-secondary">Kelas</label>
+            <input type="text" id="profile-class" class="w-full bg-[#0a0a0f] text-white p-2 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none" placeholder="Contoh: 8A">
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[10px] text-secondary">Gender</label>
+          <select id="profile-gender" class="w-full bg-[#0a0a0f] text-white p-2 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+            <option value="">Pilih Gender</option>
+            <option value="Laki-laki">Laki-laki</option>
+            <option value="Perempuan">Perempuan</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+          <label class="text-[10px] text-secondary">Gaya Rambut (Kustomisasi Gratis)</label>
+          <select id="profile-hair" class="w-full bg-[#0a0a0f] text-white p-2 rounded mt-1 border border-[#333] text-xs focus:border-primary focus:outline-none">
+            <option value="base">Botak / Standar (Base)</option>
+            <option value="bowlhair">Bowl Hair (Mangkuk)</option>
+            <option value="curlyhair">Curly Hair (Keriting)</option>
+            <option value="longhair">Long Hair (Panjang)</option>
+            <option value="mophair">Mop Hair (Mop)</option>
+            <option value="shorthair">Short Hair (Pendek)</option>
+            <option value="spikeyhair">Spikey Hair (Duri)</option>
+          </select>
+        </div>
+
+      <div class="flex gap-2 mt-5">
+        <button id="btn-save-profile" class="pixel-btn-green flex-1 bg-primary text-[#121216] font-bold py-2 rounded text-xs">Simpan Perubahan</button>
+        <button id="btn-close-profile" class="pixel-btn-green flex-1 bg-red-500 text-white font-bold py-2 rounded text-xs">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tombol Fullscreen Global -->
+  <button id="global-fullscreen-btn" class="fixed bottom-3 right-3 z-[9999] w-9 h-9 bg-white/90 border-2 border-[#6CC452] rounded-full flex items-center justify-center shadow-lg pointer-events-auto transition-transform hover:scale-110 active:scale-95">
+    <span id="global-fullscreen-icon" class="material-symbols-outlined text-[#478D47] text-lg">fullscreen</span>
+  </button>
+
+  <script>
+    function enforceLandscape() {
+      const warning = document.getElementById('landscape-warning');
+      const portraitPhone = window.innerHeight > window.innerWidth && window.innerWidth < 900;
+      warning.classList.toggle('hidden', !portraitPhone);
+      warning.classList.toggle('flex', portraitPhone);
+    }
+    window.addEventListener('resize', enforceLandscape);
+    window.addEventListener('orientationchange', enforceLandscape);
+    window.addEventListener('DOMContentLoaded', enforceLandscape);
+
+    document.getElementById('global-fullscreen-btn').addEventListener('click', () => {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+      else document.exitFullscreen?.();
+    });
+    document.addEventListener('fullscreenchange', () => {
+      document.getElementById('global-fullscreen-icon').textContent = document.fullscreenElement ? 'fullscreen_exit' : 'fullscreen';
+    });
+
+    // ==============================================================
+    // MANAJEMEN AUDIO, TEMA & SHORTCUT ESC
+    // ==============================================================
+    document.addEventListener("DOMContentLoaded", () => {
+      const settingsModal = document.getElementById("settings-modal");
+      const btnOpen = document.getElementById("btn-open-settings");
+      const btnClose = document.getElementById("btn-close-settings");
+      
+      const selectTheme = document.getElementById("select-audio-theme");
+      const rangeBgm = document.getElementById("range-bgm");
+      const rangeSfx = document.getElementById("range-sfx");
+      const valBgm = document.getElementById("val-bgm");
+      const valSfx = document.getElementById("val-sfx");
+      
+      const lobbyBgm = document.getElementById("bgm-lobby");
+      const clickSfx = document.getElementById("sfx-click");
+
+      // Load konfigurasi tersimpan atau default
+      const savedTheme = localStorage.getItem("zigma_audio_theme") ?? "fantasy-rpg";
+      const savedBgm = localStorage.getItem("zigma_bgm_vol") ?? "0.3";
+      const savedSfx = localStorage.getItem("zigma_sfx_vol") ?? "0.5";
+
+      if (selectTheme) selectTheme.value = savedTheme;
+      rangeBgm.value = (parseFloat(savedBgm) * 100).toString();
+      rangeSfx.value = (parseFloat(savedSfx) * 100).toString();
+      valBgm.textContent = `${rangeBgm.value}%`;
+      valSfx.textContent = `${rangeSfx.value}%`;
+
+      if (lobbyBgm) lobbyBgm.volume = parseFloat(savedBgm);
+
+      // Fungsi untuk menerapkan path audio berdasarkan tema yang dipilih
+      function updateAudioThemeSources(themeName) {
+        if (!lobbyBgm || !clickSfx) return;
+
+        // Path yang konsisten untuk semua tema
+        lobbyBgm.src = `/assets/audio/themes/${themeName}/lobby.mp3`;
+        clickSfx.src = `/assets/audio/themes/${themeName}/click.mp3`;
+        
+        lobbyBgm.load();
+        clickSfx.load();
+      }
+
+      // Terapkan tema awal
+      updateAudioThemeSources(savedTheme);
+
+      // Listener saat tema audio diganti
+      selectTheme?.addEventListener("change", () => {
+        const chosenTheme = selectTheme.value;
+        localStorage.setItem("zigma_audio_theme", chosenTheme);
+        updateAudioThemeSources(chosenTheme);
+        if (lobbyBgm && !lobbyBgm.paused) {
+          lobbyBgm.play().catch(e => console.log("Gagal memutar ulang BGM", e));
+        }
+      });
+
+      function toggleSettingsModal() {
+        if (settingsModal.classList.contains("hidden")) {
+          settingsModal.classList.remove("hidden");
+        } else {
+          settingsModal.classList.add("hidden");
+        }
+      }
+
+      btnOpen?.addEventListener("click", toggleSettingsModal);
+      btnClose?.addEventListener("click", toggleSettingsModal);
+
+      // Shortcut Tombol ESC untuk Membuka/Menutup Panel Pengaturan / Profil / QR
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const qrOverlay = document.getElementById("qr-scanner-overlay");
+          const profileModal = document.getElementById("profile-modal");
+
+          if (qrOverlay && !qrOverlay.classList.contains("hidden")) {
+            qrOverlay.classList.add("hidden");
+          } else if (profileModal && !profileModal.classList.contains("hidden")) {
+            profileModal.classList.add("hidden");
+          } else {
+            toggleSettingsModal();
+          }
+        }
+      });
+
+      rangeBgm.addEventListener("input", () => {
+        const vol = parseInt(rangeBgm.value) / 100;
+        valBgm.textContent = `${rangeBgm.value}%`;
+        if (lobbyBgm) lobbyBgm.volume = vol;
+        localStorage.setItem("zigma_bgm_vol", vol.toString());
+      });
+
+      rangeSfx.addEventListener("input", () => {
+        const vol = parseInt(rangeSfx.value) / 100;
+        valSfx.textContent = `${rangeSfx.value}%`;
+        localStorage.setItem("zigma_sfx_vol", vol.toString());
+      });
+
+      // ==============================================================
+      // MANAJEMEN MODAL PROFIL & STATISTIK UI LOKAL
+      // ==============================================================
+      const profileModal = document.getElementById("profile-modal");
+      const btnOpenProfile = document.getElementById("btn-open-profile");
+      const btnCloseProfile = document.getElementById("btn-close-profile");
+
+      btnOpenProfile?.addEventListener("click", () => {
+        profileModal?.classList.remove("hidden");
+      });
+
+      btnCloseProfile?.addEventListener("click", () => {
+        profileModal?.classList.add("hidden");
+      });
+    });
+  </script>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
